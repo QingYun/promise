@@ -37,7 +37,7 @@ class Storage {
  public:
   template <typename T>
   void Set(T&& v) {
-    new(&storage_) T{std::move(v)};
+    new (&storage_) T{std::move(v)};
   }
   template <typename T>
   T& As() {
@@ -45,26 +45,24 @@ class Storage {
   }
 };
 
-}  // namespace _
-
 template <typename T>
 class ExceptionOr {
-  _::Storage<T> storage_;
+  Storage<T> storage_;
 
   enum class State { Empty, Exception, Value } state_;
 
  public:
-   ExceptionOr() : state_(State::Empty) {}
-   ExceptionOr(T&& value) : state_(State::Value) {
+  ExceptionOr() : state_(State::Empty) {}
+  ExceptionOr(T&& value) : state_(State::Value) {
     storage_.Set(std::move(value));
   }
-   ExceptionOr(std::exception_ptr exception) : state_(State::Exception) {
+  ExceptionOr(std::exception_ptr exception) : state_(State::Exception) {
     storage_.Set(std::move(exception));
   }
 
-   bool IsEmpty() const { return state_ == State::Empty; }
-   bool IsException() const { return state_ == State::Exception; }
-   bool IsValue() const { return state_ == State::Value; }
+  bool IsEmpty() const { return state_ == State::Empty; }
+  bool IsException() const { return state_ == State::Exception; }
+  bool IsValue() const { return state_ == State::Value; }
 
   void SetException(std::exception_ptr exception) {
     assert(IsEmpty());
@@ -76,7 +74,7 @@ class ExceptionOr {
     storage_.Set(std::move(value));
     state_ = State::Value;
   }
-  
+
   std::exception_ptr GetException() {
     state_ = State::Empty;
     return std::move(storage_.As<std::exception_ptr>());
@@ -86,5 +84,7 @@ class ExceptionOr {
     return std::move(storage_.As<T>());
   }
 };
+
+}  // namespace _
 
 }  // namespace promise

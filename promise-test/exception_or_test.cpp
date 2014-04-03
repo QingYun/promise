@@ -1,7 +1,7 @@
 #include "exception_or.h"
 #include <gtest/gtest.h>
 
-using namespace promise;
+using namespace promise::_;
 
 TEST(ExceptionOrTest, Empty) {
   ExceptionOr<int> eoi{};
