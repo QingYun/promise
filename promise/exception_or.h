@@ -36,7 +36,7 @@ class Storage {
 
  public:
   template <typename T>
-  void Set(T&& v) {
+  void set(T&& v) {
     new (&storage_) T{std::move(v)};
   }
   template <typename T>
@@ -54,32 +54,32 @@ class ExceptionOr {
  public:
   ExceptionOr() : state_(State::Empty) {}
   ExceptionOr(T&& value) : state_(State::Value) {
-    storage_.Set(std::move(value));
+    storage_.set(std::move(value));
   }
   ExceptionOr(std::exception_ptr exception) : state_(State::Exception) {
-    storage_.Set(std::move(exception));
+    storage_.set(std::move(exception));
   }
 
-  bool IsEmpty() const { return state_ == State::Empty; }
-  bool IsException() const { return state_ == State::Exception; }
-  bool IsValue() const { return state_ == State::Value; }
+  bool isEmpty() const { return state_ == State::Empty; }
+  bool isException() const { return state_ == State::Exception; }
+  bool isValue() const { return state_ == State::Value; }
 
-  void SetException(std::exception_ptr exception) {
-    assert(IsEmpty());
-    storage_.Set(std::move(exception));
+  void setException(std::exception_ptr exception) {
+    assert(isEmpty());
+    storage_.set(std::move(exception));
     state_ = State::Exception;
   }
-  void SetValue(T&& value) {
-    assert(IsEmpty());
-    storage_.Set(std::move(value));
+  void setValue(T&& value) {
+    assert(isEmpty());
+    storage_.set(std::move(value));
     state_ = State::Value;
   }
 
-  std::exception_ptr GetException() {
+  std::exception_ptr getException() {
     state_ = State::Empty;
     return std::move(storage_.As<std::exception_ptr>());
   }
-  T GetValue() {
+  T getValue() {
     state_ = State::Empty;
     return std::move(storage_.As<T>());
   }
