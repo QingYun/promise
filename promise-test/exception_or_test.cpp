@@ -101,3 +101,20 @@ TEST(ExceptionOrTest, SaveClassValue) {
     EXPECT_TRUE(eoc.isEmpty());
   }
 }
+
+TEST(ExceptionOrTest, DeconstructContent) {
+  struct C {
+    int* value_;
+    C(int* value) : value_(value) {}
+    C(C&& other) : value_(other.value_) { other.value_ = nullptr; }
+    ~C() {
+      if (value_) (*value_)--;
+    }
+  };
+
+  int value = 11;
+  {
+    ExceptionOr<C> eoc{ C{&value} };
+  }
+  EXPECT_EQ(10, value);
+}

@@ -1,4 +1,5 @@
 #pragma once
+#include "common.h"
 #include <type_traits>
 #include <exception>
 #include <new>
@@ -59,6 +60,17 @@ class ExceptionOr {
   ExceptionOr(std::exception_ptr exception) : state_(State::Exception) {
     storage_.set(std::move(exception));
   }
+
+  ~ExceptionOr() {
+    using namespace std;
+    if (isException())
+    	storage_.As<exception_ptr>().~exception_ptr();
+    else if (isValue())
+      storage_.As<T>().~T();
+  }
+
+  PROMISE_DISALLOW_COPY(ExceptionOr);
+  PROMISE_DISALLOW_MOVE(ExceptionOr);
 
   bool isEmpty() const { return state_ == State::Empty; }
   bool isException() const { return state_ == State::Exception; }
