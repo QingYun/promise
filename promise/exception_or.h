@@ -53,18 +53,18 @@ class ExceptionOr {
   enum class State { Empty, Exception, Value } state_;
 
  public:
-  ExceptionOr() : state_(State::Empty) {}
-  ExceptionOr(T&& value) : state_(State::Value) {
+  ExceptionOr() : state_{State::Empty} {}
+  ExceptionOr(T&& value) : state_{State::Value} {
     storage_.set(std::move(value));
   }
-  ExceptionOr(std::exception_ptr exception) : state_(State::Exception) {
+  ExceptionOr(std::exception_ptr exception) : state_{State::Exception} {
     storage_.set(std::move(exception));
   }
 
   ~ExceptionOr() {
     using namespace std;
     if (isException())
-    	storage_.As<exception_ptr>().~exception_ptr();
+      storage_.As<exception_ptr>().~exception_ptr();
     else if (isValue())
       storage_.As<T>().~T();
   }
