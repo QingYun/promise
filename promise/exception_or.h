@@ -3,6 +3,7 @@
 #include <type_traits>
 #include <exception>
 #include <new>
+#include <memory>
 #include <cassert>
 
 namespace promise {
@@ -37,12 +38,8 @@ class Storage {
 
  public:
   template <typename T>
-  void set(T&& v) {
-    new (&storage_) T{std::move(v)};
-  }
-  template <typename T>
-  T& As() {
-    return *reinterpret_cast<T*>(&storage_);
+  T* As() {
+    return reinterpret_cast<T*>(&storage_);
   }
 };
 
@@ -54,19 +51,17 @@ class ExceptionOr {
 
  public:
   ExceptionOr() : state_{State::Empty} {}
-  ExceptionOr(T&& value) : state_{State::Value} {
-    storage_.set(std::move(value));
-  }
-  ExceptionOr(std::exception_ptr exception) : state_{State::Exception} {
-    storage_.set(std::move(exception));
+  ExceptionOr(T&& value) : ExceptionOr{} { setValue(std::move(value)); }
+  ExceptionOr(std::exception_ptr exception) : ExceptionOr{} {
+    setException(std::move(exception));
   }
 
   ~ExceptionOr() {
     using namespace std;
     if (isException())
-      storage_.As<exception_ptr>().~exception_ptr();
+      storage_.As<exception_ptr>()->~exception_ptr();
     else if (isValue())
-      storage_.As<T>().~T();
+      storage_.As<T>()->~T();
   }
 
   PROMISE_DISALLOW_COPY(ExceptionOr);
@@ -78,22 +73,23 @@ class ExceptionOr {
 
   void setException(std::exception_ptr exception) {
     assert(isEmpty());
-    storage_.set(std::move(exception));
+    new (storage_.As<void>()) std::exception_ptr{std::move(exception)};
     state_ = State::Exception;
   }
-  void setValue(T&& value) {
+  template<typename... U>
+  void setValue(U&&... value) {
     assert(isEmpty());
-    storage_.set(std::move(value));
+    new (storage_.As<void>()) T{std::forward<U>(value)...};
     state_ = State::Value;
   }
 
   std::exception_ptr getException() {
     state_ = State::Empty;
-    return std::move(storage_.As<std::exception_ptr>());
+    return std::move(*storage_.As<std::exception_ptr>());
   }
   T getValue() {
     state_ = State::Empty;
-    return std::move(storage_.As<T>());
+    return std::move(*storage_.As<T>());
   }
 };
 
