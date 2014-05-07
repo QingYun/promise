@@ -39,6 +39,43 @@ TEST(PromiseTest, FulfillWithVoid) {
   }
 }
 
+TEST(PromiseTest, Reject) {
+  Promise<int> p{};
+  auto fulfiller = p.getFulfiller();
+  fulfiller.reject<std::runtime_error>("reject_test");
+  try {
+    p.wait();
+  }
+  catch (const std::runtime_error& e) {
+    EXPECT_STREQ("reject_test", e.what());
+  }
+}
+
+TEST(PromiseTest, AutoReject) {
+  {
+    Promise<void> p{};
+    {
+      p.getFulfiller();
+    }
+    try {
+      p.wait();
+    }
+    catch (const std::logic_error& e) {
+      EXPECT_STREQ("~Fulfiller", e.what());
+    }
+  }
+
+  {
+    Promise<int> p{[](Fulfiller<int>){}};
+    try {
+      p.wait();
+    }
+    catch (const std::logic_error& e) {
+      EXPECT_STREQ("~Fulfiller", e.what());
+    }
+  }
+}
+
 TEST(PromiseTest, MovePromise) {
   auto CheckResult = [] (Promise<int> promise) {
     EXPECT_EQ(123, promise.wait());

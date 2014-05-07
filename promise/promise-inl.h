@@ -202,12 +202,17 @@ class PROMISE::Fulfiller {
 
   ~Fulfiller() {
     if (node_)
-      reject(std::make_exception_ptr(std::logic_error{"~Fulfiller"}));
+      reject<std::logic_error>("~Fulfiller");
   }
 
   template <typename... U>
   void fulfill(U&&... v) {
     node_->setValue(std::forward<U>(v)...);
+  }
+
+  template <typename E, typename... T>
+  void reject(T&&... t) {
+    node_->setException(std::make_exception_ptr(E{std::forward<T>(t)...}));
   }
   void reject(std::exception_ptr e) { node_->setException(std::move(e)); }
 };
