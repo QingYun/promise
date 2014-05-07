@@ -18,5 +18,14 @@
     <ClInclude Include="exception_or.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="promise.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="promise-inl.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="common.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
