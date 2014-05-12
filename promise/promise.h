@@ -2,6 +2,7 @@
 #include "exception_or.h"
 #include <memory>
 #include <tuple>
+#include <type_traits>
 
 namespace promise {
 
@@ -31,7 +32,7 @@ class Promise {
  public:
   explicit Promise(EventLoop& event_loop = EventLoop::instance);
   template <typename F>
-  Promise(F&& resolver, EventLoop& event_loop = EventLoop::instance);
+  explicit Promise(F&& resolver, EventLoop& event_loop = EventLoop::instance);
 
   PROMISE_DISALLOW_COPY(Promise);
 
@@ -41,13 +42,21 @@ class Promise {
   Fulfiller getFulfiller();
 
   T wait();
+
+  template <typename F, typename E, typename P>
+  _::PromiseForResult<F, Category, T> then(F&& on_fulfill, E&& on_reject,
+                                           P&& on_progress);
 };
 
 template <typename T, typename E = NoEventLoop, typename TM = SingleThreaded>
 using Fulfiller = typename Promise<T, E, TM>::Fulfiller;
 
-
-
+template <typename T, typename E = NoEventLoop, typename TM = SingleThreaded>
+Promise<std::decay_t<T>, E, TM> makePromise(T&& t);
+template <typename E = NoEventLoop, typename TM = SingleThreaded>
+Promise<void, E, TM> makePromise();
+template <typename T = void, typename E = NoEventLoop, typename TM = SingleThreaded>
+Promise<T, E, TM> makePromise(std::exception_ptr e);
 
 }  // namespace promise
 

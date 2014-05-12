@@ -1,5 +1,4 @@
 #pragma once
-#include <type_traits>
 #include <functional>
 #include <thread>
 #include <mutex>
@@ -174,6 +173,29 @@ class MultiThreadEventLoop {
 };
 
 MultiThreadEventLoop MultiThreadEventLoop::instance;
+
+//----------makePromise Implementation----------
+
+template <typename T, typename E, typename TM>
+Promise<std::decay_t<T>, E, TM> makePromise(T&& t) {
+  Promise<std::decay_t<T>, E, TM> result;
+  result.getFulfiller().fulfill(std::forward<T>(t));
+  return result;
+}
+
+template <typename E, typename TM>
+Promise<void, E, TM> makePromise() {
+  Promise<void, E, TM> result;
+  result.getFulfiller().fulfill();
+  return result;
+}
+
+template <typename T, typename E, typename TM>
+Promise<T, E, TM> makePromise(std::exception_ptr e) {
+  Promise<T, E, TM> result;
+  result.getFulfiller().reject(std::move(e));
+  return result;
+}
 
 //----------Promise Implementation----------
 

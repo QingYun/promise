@@ -90,3 +90,38 @@ TEST(PromiseTest, MovePromise) {
   FulfillPromise(std::move(fulfiller));
   CheckResult(std::move(p));
 }
+
+TEST(PromiseTest, MakePromise) {
+  {
+    Promise<void> p = makePromise();
+    EXPECT_NO_THROW(p.wait());
+  }
+
+  {
+    Promise<int> p = makePromise(123);
+    EXPECT_EQ(123, p.wait());
+  }
+
+  {
+    Promise<void> p = makePromise(
+        std::make_exception_ptr(std::runtime_error("make_promise_test")));
+    try {
+      p.wait();
+    }
+    catch (const std::runtime_error& e) {
+      EXPECT_STREQ("make_promise_test", e.what());
+    }
+  }
+
+  {
+    Promise<int, NoEventLoop, MultiThreaded> p =
+        makePromise<int, NoEventLoop, MultiThreaded>(
+            std::make_exception_ptr(std::runtime_error("make_promise_test")));
+    try {
+      p.wait();
+    }
+    catch (const std::runtime_error& e) {
+      EXPECT_STREQ("make_promise_test", e.what());
+    }
+  }
+}
