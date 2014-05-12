@@ -31,7 +31,7 @@ class Promise {
  public:
   explicit Promise(EventLoop& event_loop = EventLoop::instance);
   template <typename F>
-  Promise(F&& fulfill_routine, EventLoop& event_loop = EventLoop::instance);
+  Promise(F&& resolver, EventLoop& event_loop = EventLoop::instance);
 
   PROMISE_DISALLOW_COPY(Promise);
 
@@ -43,8 +43,11 @@ class Promise {
   T wait();
 };
 
-template <typename T>
-using Fulfiller = typename Promise<T>::Fulfiller;
+template <typename T, typename E = NoEventLoop, typename TM = SingleThreaded>
+using Fulfiller = typename Promise<T, E, TM>::Fulfiller;
+
+
+
 
 }  // namespace promise
 
