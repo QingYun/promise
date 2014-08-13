@@ -1,4 +1,4 @@
-#include "promise.h"
+#include "../promise.h"
 #include <gtest/gtest.h>
 
 using namespace promise;

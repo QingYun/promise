@@ -1,12 +1,124 @@
 #pragma once
+#include <memory>
+#include <tuple>
 #include <type_traits>
 #include <functional>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <queue>
+#include <cassert>
+
+#define PROMISE_DISALLOW_COPY(class_name) \
+  class_name(const class_name&) = delete; \
+  class_name& operator=(const class_name&) = delete
+
+#define PROMISE_DISALLOW_MOVE(class_name) \
+  class_name(class_name&&) = delete;      \
+  class_name& operator=(class_name&&) = delete
 
 namespace promise {
+
+namespace _ {
+
+template <typename T, typename EventLoop, typename ThreadingModel>
+class PromiseNode;
+
+template <typename PrevResult, typename OnFulfill, typename OnReject,
+          typename OnProgress, typename... Attachments>
+struct ContinuationTypeTrait;
+
+template <typename F, typename... Args>
+class PartiallyApplied;
+
+}  // namespace _
+
+class SingleThreaded;
+class MultiThreaded;
+
+class NoEventLoop;
+class MultiThreadEventLoop;
+
+using default_on_fulfill_t = std::nullptr_t;
+using default_on_reject_t = std::nullptr_t;
+using default_on_progress_t = std::nullptr_t;
+
+template <typename T, typename EventLoop = NoEventLoop,
+          typename ThreadingModel = SingleThreaded>
+class Promise {
+ public:
+  class Fulfiller;
+
+ private:
+  using NodeType = _::PromiseNode<T, EventLoop, ThreadingModel>;
+  std::unique_ptr<NodeType> node_;
+
+  template <typename U>
+  using Category = Promise<U, EventLoop, ThreadingModel>;
+
+ public:
+  explicit Promise(EventLoop& event_loop = EventLoop::getInstance());
+  template <typename F>
+  explicit Promise(F&& resolver, EventLoop& event_loop = EventLoop::getInstance());
+
+  PROMISE_DISALLOW_COPY(Promise);
+
+  Promise(Promise&&);
+  Promise& operator=(Promise&&);
+
+  Fulfiller getFulfiller();
+
+  T wait();
+
+  template <typename OnFulfill, typename OnReject, typename OnProgress,
+            typename... Attachments>
+  std::enable_if_t<
+      _::ContinuationTypeTrait<T, OnFulfill, OnReject, OnProgress,
+                               Attachments...>::is_valid_continuation,
+      Category<typename _::ContinuationTypeTrait<
+          T, OnFulfill, OnReject, OnProgress, Attachments...>::ResultType>>
+      then(OnFulfill&& on_fulfill, OnReject&& on_reject,
+           OnProgress&& on_progress, Attachments&&... attachments);
+
+  template <typename OnFulfill>
+  std::enable_if_t<
+      _::ContinuationTypeTrait<T, OnFulfill, std::nullptr_t,
+                               std::nullptr_t>::is_valid_continuation,
+      Category<typename _::ContinuationTypeTrait<T, OnFulfill, std::nullptr_t,
+                                                 std::nullptr_t>::ResultType>>
+      then(OnFulfill&& on_fulfill);
+
+  template <typename OnFulfill, typename OnReject>
+  std::enable_if_t<
+      _::ContinuationTypeTrait<T, OnFulfill, OnReject,
+                               std::nullptr_t>::is_valid_continuation,
+      Category<typename _::ContinuationTypeTrait<T, OnFulfill, OnReject,
+                                                 std::nullptr_t>::ResultType>>
+      then(OnFulfill&& on_fulfill, OnReject&& on_reject);
+
+ private:
+  explicit Promise(std::unique_ptr<NodeType> node);
+
+  template <typename, typename, typename>
+  friend class Promise;
+
+  template <typename, typename, typename, typename>
+  friend class AttachablePromiseNode;
+};
+
+template <typename T, typename E = NoEventLoop, typename TM = SingleThreaded>
+using Fulfiller = typename Promise<T, E, TM>::Fulfiller;
+
+template <typename T, typename E = NoEventLoop, typename TM = SingleThreaded>
+Promise<std::decay_t<T>, E, TM> makePromise(T&& t);
+template <typename E = NoEventLoop, typename TM = SingleThreaded>
+Promise<void, E, TM> makePromise();
+template <typename T = void, typename E = NoEventLoop,
+          typename TM = SingleThreaded>
+Promise<T, E, TM> makePromise(std::exception_ptr e);
+
+template <typename F, typename... Args>
+_::PartiallyApplied<F, Args...> partiallyApply(F&& f, Args&&... args);
 
 namespace _ {
 
@@ -35,7 +147,7 @@ T&& returnMaybeVoid(T&& v) {
   return std::forward<T>(v);
 }
 
-void returnMaybeVoid(Void&&) {}
+inline void returnMaybeVoid(Void&&) {}
 
 template <
     typename F, typename... Args,
@@ -53,6 +165,91 @@ Void objectifyReturnedVoid(F&& f, Args&&... args) {
   f(std::forward<Args>(args)...);
   return Void{};
 }
+
+//----------ExceptionOr----------
+
+template <
+    typename T,
+    bool TIsLarger = (sizeof(typename std::aligned_storage<
+                          sizeof(T), std::alignment_of<T>::value>::type) >
+                      sizeof(typename std::aligned_storage<
+                          sizeof(std::exception_ptr),
+                          std::alignment_of<std::exception_ptr>::value>::type))>
+struct Storage_;
+
+template <typename T>
+struct Storage_<T, true> {
+  using Type = typename std::aligned_storage<sizeof(T),
+                                             std::alignment_of<T>::value>::type;
+};
+
+template <typename T>
+struct Storage_<T, false> {
+  using Type = typename std::aligned_storage<
+      sizeof(std::exception_ptr),
+      std::alignment_of<std::exception_ptr>::value>::type;
+};
+
+template <typename T>
+class Storage {
+  typename Storage_<T>::Type storage_;
+
+ public:
+  template <typename T>
+  T* As() {
+    return reinterpret_cast<T*>(&storage_);
+  }
+};
+
+template <typename T>
+class ExceptionOr {
+  Storage<T> storage_;
+
+  enum class State { Empty, Exception, Value } state_;
+
+ public:
+  ExceptionOr() : state_{State::Empty} {}
+  ExceptionOr(T&& value) : ExceptionOr{} { setValue(std::move(value)); }
+  ExceptionOr(std::exception_ptr exception) : ExceptionOr{} {
+    setException(std::move(exception));
+  }
+
+  ~ExceptionOr() {
+    using namespace std;
+    if (isException())
+      storage_.As<exception_ptr>()->~exception_ptr();
+    else if (isValue())
+      storage_.As<T>()->~T();
+  }
+
+  PROMISE_DISALLOW_COPY(ExceptionOr);
+  PROMISE_DISALLOW_MOVE(ExceptionOr);
+
+  bool isEmpty() const { return state_ == State::Empty; }
+  bool isException() const { return state_ == State::Exception; }
+  bool isValue() const { return state_ == State::Value; }
+
+  void setException(std::exception_ptr exception) {
+    assert(isEmpty());
+    new (storage_.As<void>()) std::exception_ptr{std::move(exception)};
+    state_ = State::Exception;
+  }
+  template <typename... U>
+  void setValue(U&&... value) {
+    assert(isEmpty());
+    new (storage_.As<void>()) T{std::forward<U>(value)...};
+    state_ = State::Value;
+  }
+
+  std::exception_ptr getException() {
+    state_ = State::Empty;
+    return std::move(*storage_.As<std::exception_ptr>());
+  }
+  T getValue() {
+    state_ = State::Empty;
+    return std::move(*storage_.As<T>());
+  }
+};
 
 //----------makeCopyableFunctor----------
 template <typename F>
@@ -147,9 +344,7 @@ using IndexList = typename IndexList_<Indexes<>, Min, Max, Min == Max>::Type;
 template <typename T, typename U>
 struct ForwarderMaybeNull {
   using ResultType = T&&;
-  static ResultType go(T&& arg, U&&) {
-    return static_cast<T&&>(arg);
-  }
+  static ResultType go(T&& arg, U&&) { return static_cast<T&&>(arg); }
 };
 
 template <typename U>
@@ -161,10 +356,8 @@ struct ForwarderMaybeNull<std::nullptr_t, U> {
 };
 
 template <typename T, typename U>
-typename ForwarderMaybeNull<T, U>::ResultType forwardMaybeNull(
-    T&& t, U&& u) {
-  return ForwarderMaybeNull<T, U>::go(std::forward<T>(t),
-                                        std::forward<U>(u));
+typename ForwarderMaybeNull<T, U>::ResultType forwardMaybeNull(T&& t, U&& u) {
+  return ForwarderMaybeNull<T, U>::go(std::forward<T>(t), std::forward<U>(u));
 }
 
 //----------callContinuation----------
@@ -306,7 +499,7 @@ class PromiseNode : public PromiseNodeBase {
   OnReadyCallback on_ready_callback_;
   using OnProgressCallback = std::function<void(PromiseNode*, Result)>;
   OnProgressCallback on_progress_callback_;
-  
+
   EventLoop& event_loop_;
   std::unique_ptr<PromiseNodeBase> prev_;
   ThreadingModel threading_model_;
@@ -575,14 +768,14 @@ struct ContinuationResult<PrevResult, std::nullptr_t, std::nullptr_t,
   static const bool valid_result_type = true;
 };
 
-//template <typename OnFulfill, typename OnReject, typename Attachment>
-//struct ContinuationResult<void, OnFulfill, OnReject, Attachment> {};
+// template <typename OnFulfill, typename OnReject, typename Attachment>
+// struct ContinuationResult<void, OnFulfill, OnReject, Attachment> {};
 //
-//template <typename OnFulfill, typename Attachment>
-//struct ContinuationResult<void, OnFulfill, std::nullptr_t, Attachment> {};
+// template <typename OnFulfill, typename Attachment>
+// struct ContinuationResult<void, OnFulfill, std::nullptr_t, Attachment> {};
 //
-//template <typename OnReject, typename Attachment>
-//struct ContinuationResult<
+// template <typename OnReject, typename Attachment>
+// struct ContinuationResult<
 //    void, std::nullptr_t, OnReject,
 //    Attachment> : public JoinPromise<FunctionResultType<OnReject,
 //                                                        std::exception_ptr,
@@ -591,8 +784,8 @@ struct ContinuationResult<PrevResult, std::nullptr_t, std::nullptr_t,
 //  static const bool valid_result_type = true;
 //};
 //
-//template <typename Attachment>
-//struct ContinuationResult<void, std::nullptr_t, std::nullptr_t,
+// template <typename Attachment>
+// struct ContinuationResult<void, std::nullptr_t, std::nullptr_t,
 //                          Attachment> : public JoinPromise<void,
 //                                                           Attachment> {
 //  static const bool valid_result_type = true;
@@ -717,18 +910,18 @@ class MultiThreaded {
 
 class NoEventLoop {
  public:
-  static NoEventLoop instance;
-
- public:
   template <typename F>
   void dispatch(F&& f) {
     f();
   }
 
   void runOne() { std::this_thread::yield(); }
-};
 
-NoEventLoop NoEventLoop::instance;
+  static NoEventLoop& getInstance() {
+    static NoEventLoop instance;
+    return instance;
+  }
+};
 
 //----------MultiThreadEventLoop----------
 
@@ -736,9 +929,6 @@ class MultiThreadEventLoop {
   std::queue<std::function<void()>> queue_;
   std::mutex lock_;
   std::condition_variable cv_;
-
- public:
-  static MultiThreadEventLoop instance;
 
  public:
   template <typename F>
@@ -756,9 +946,12 @@ class MultiThreadEventLoop {
     queue_.front()();
     queue_.pop();
   }
-};
 
-MultiThreadEventLoop MultiThreadEventLoop::instance;
+  static MultiThreadEventLoop& getInstance() {
+    static MultiThreadEventLoop instance;
+    return instance;
+  }
+};
 
 //----------makePromise Implementation----------
 
@@ -926,7 +1119,7 @@ T PROMISE::wait() {
 template <typename... T>
 void PRINT_TYPE() {
 #pragma message(__FUNCSIG__)
-  //static_assert(_::IsUnaryFunction<T...>::value, "!!!");
+  // static_assert(_::IsUnaryFunction<T...>::value, "!!!");
 }
 
 PROMISE_TEMPLATE_LIST
@@ -971,23 +1164,19 @@ auto PROMISE::then(OnFulfill&& on_fulfill, OnReject&& on_reject,
           std::forward_as_tuple(std::forward<Attachments>(attachments)...));
   auto new_node_ptr = new_node.get();
 
-  old_node->setOnReadyCallback(
-      partiallyApply([new_node_ptr](OnFulfillType on_fulfill,
-                                    OnRejectType on_reject, NodeType* node) {
-                       auto& result = node->getResult();
-                       if (result.isException())
-                         transformAndFulfill(new_node_ptr, on_reject,
-                                             result.getException());
-                       else
-                         transformAndFulfill(new_node_ptr, on_fulfill,
-                                             result.getValue());
-                     },
-                     forwardMaybeNull<OnFulfill>(
-                         std::forward<OnFulfill>(on_fulfill),
-                         std::move(default_on_fulfill)),
-                     forwardMaybeNull<OnReject>(
-                         std::forward<OnReject>(on_reject),
-                         std::move(default_on_reject))));
+  old_node->setOnReadyCallback(partiallyApply(
+      [new_node_ptr](OnFulfillType on_fulfill, OnRejectType on_reject,
+                     NodeType* node) {
+        auto& result = node->getResult();
+        if (result.isException())
+          transformAndFulfill(new_node_ptr, on_reject, result.getException());
+        else
+          transformAndFulfill(new_node_ptr, on_fulfill, result.getValue());
+      },
+      forwardMaybeNull<OnFulfill>(std::forward<OnFulfill>(on_fulfill),
+                                  std::move(default_on_fulfill)),
+      forwardMaybeNull<OnReject>(std::forward<OnReject>(on_reject),
+                                 std::move(default_on_reject))));
 
   old_node->setOnProgressCallback(
       partiallyApply([new_node_ptr](OnProgressType on_progress, NodeType* node,
