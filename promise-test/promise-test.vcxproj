@@ -70,6 +70,9 @@
     </ClCompile>
     <ClCompile Include="gtest\src\gtest-all.cc" />
     <ClCompile Include="gtest\src\gtest_main.cc" />
+    <ClCompile Include="promises_aplus_test.cpp">
+      <PreprocessToFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</PreprocessToFile>
+    </ClCompile>
     <ClCompile Include="promise_test.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
     </ClCompile>

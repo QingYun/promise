@@ -7,7 +7,6 @@
 #include <mutex>
 #include <condition_variable>
 #include <queue>
-#include <cassert>
 
 #define PROMISE_DISALLOW_COPY(class_name) \
   class_name(const class_name&) = delete; \
@@ -16,6 +15,16 @@
 #define PROMISE_DISALLOW_MOVE(class_name) \
   class_name(class_name&&) = delete;      \
   class_name& operator=(class_name&&) = delete
+
+#ifdef NDEBUG
+
+#define PROMISE_ASSERT(expr) ((void)0)
+
+#else
+
+#define PROMISE_ASSERT(expr) do { if (!(expr)) { throw std::runtime_error{#expr "\n" __FILE__}; } } while (0)
+
+#endif
 
 namespace promise {
 
@@ -230,13 +239,13 @@ class ExceptionOr {
   bool isValue() const { return state_ == State::Value; }
 
   void setException(std::exception_ptr exception) {
-    assert(isEmpty());
+    PROMISE_ASSERT(isEmpty());
     new (storage_.As<void>()) std::exception_ptr{std::move(exception)};
     state_ = State::Exception;
   }
   template <typename... U>
   void setValue(U&&... value) {
-    assert(isEmpty());
+    PROMISE_ASSERT(isEmpty());
     new (storage_.As<void>()) T{std::forward<U>(value)...};
     state_ = State::Value;
   }
@@ -522,7 +531,7 @@ class PromiseNode : public PromiseNodeBase {
 
     if (getOnReadySafe())
       getEventLoop().dispatch([this]() {
-        assert(on_ready_callback_);
+      PROMISE_ASSERT(on_ready_callback_);
         on_ready_callback_(this);
       });
   }
@@ -536,7 +545,7 @@ class PromiseNode : public PromiseNodeBase {
 
     if (getOnReadySafe())
       getEventLoop().dispatch([this]() {
-        assert(on_ready_callback_);
+      PROMISE_ASSERT(on_ready_callback_);
         on_ready_callback_(this);
       });
   }
@@ -546,7 +555,7 @@ class PromiseNode : public PromiseNodeBase {
     setOnReadySafe(std::forward<F>(f));
     if (!getResultSafe().isEmpty())
       getEventLoop().dispatch([this]() {
-        assert(on_ready_callback_);
+      PROMISE_ASSERT(on_ready_callback_);
         on_ready_callback_(this);
       });
   }
@@ -560,7 +569,8 @@ class PromiseNode : public PromiseNodeBase {
   void onProgress(U&&... u) {
     if (getOnProgressSafe())
       getEventLoop().dispatch(partiallyApply([this](Result r) {
-                                               assert(on_progress_callback_);
+                                               PROMISE_ASSERT(
+                                                   on_progress_callback_);
                                                on_progress_callback_(
                                                    this, std::move(r));
                                              },
@@ -1054,6 +1064,7 @@ class PROMISE::Fulfiller {
 
   template <typename... U>
   void fulfill(U&&... v) {
+    PROMISE_ASSERT(node_);
     node_->setValue(std::forward<U>(v)...);
     node_ = nullptr;
   }
@@ -1063,12 +1074,14 @@ class PROMISE::Fulfiller {
     reject(std::make_exception_ptr(E{std::forward<T>(t)...}));
   }
   void reject(std::exception_ptr e) {
+    PROMISE_ASSERT(node_);
     node_->setException(std::move(e));
     node_ = nullptr;
   }
 
   template <typename... U>
   void progress(U&&... u) {
+    PROMISE_ASSERT(node_);
     node_->onProgress(std::forward<U>(u)...);
   }
 };
@@ -1109,17 +1122,11 @@ T PROMISE::wait() {
   while (!finish) node_->getEventLoop().runOne();
 
   auto& result = node_->getResult();
-  assert(!result.isEmpty());
+  PROMISE_ASSERT(!result.isEmpty());
 
   if (result.isException()) std::rethrow_exception(result.getException());
 
   return _::returnMaybeVoid(std::move(result.getValue()));
-}
-
-template <typename... T>
-void PRINT_TYPE() {
-#pragma message(__FUNCSIG__)
-  // static_assert(_::IsUnaryFunction<T...>::value, "!!!");
 }
 
 PROMISE_TEMPLATE_LIST
