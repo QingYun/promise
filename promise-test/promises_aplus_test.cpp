@@ -91,3 +91,63 @@ TEST(PromiseAPlusTest, Test_2_1_2_1) {
                 }}.join();
   }
 }
+
+// When rejected, a promise: must not transition to any other state.
+TEST(PromiseAPlusTest, Test_2_1_3_1) {
+  // trying to reject then immediately fulfill
+  {
+    auto promise = Promise<void>{};
+    auto fulfiller = promise.getFulfiller();
+    bool on_rejected_called = false;
+
+    auto new_promise = promise.then(
+      [&on_rejected_called]() {
+        EXPECT_EQ(false, on_rejected_called);
+      },
+      [&on_rejected_called](std::exception_ptr) {
+        on_rejected_called = true;
+      });
+
+    reject(fulfiller, std::make_exception_ptr(std::runtime_error{""}));
+    resolve(fulfiller);
+  }
+
+  // trying to reject then fulfill, delayed
+  {
+    auto promise = Promise<void>{};
+    auto fulfiller = promise.getFulfiller();
+    bool on_rejected_called = false;
+
+    auto new_promise = promise.then(
+      [&on_rejected_called]() {
+        EXPECT_EQ(false, on_rejected_called);
+      },
+      [&on_rejected_called](std::exception_ptr) {
+        on_rejected_called = true;
+      });
+
+    std::thread{[&fulfiller]() {
+                  reject(fulfiller,
+                         std::make_exception_ptr(std::runtime_error{""}));
+                  resolve(fulfiller);
+                }}.join();
+  }
+
+  // trying to reject immediately then fulfill delayed
+  {
+    auto promise = Promise<void>{};
+    auto fulfiller = promise.getFulfiller();
+    bool on_rejected_called = false;
+
+    auto new_promise = promise.then(
+      [&on_rejected_called]() {
+        EXPECT_EQ(false, on_rejected_called);
+      },
+      [&on_rejected_called](std::exception_ptr) {
+        on_rejected_called = true;
+      });
+
+    reject(fulfiller, std::make_exception_ptr(std::runtime_error{ "" }));
+    std::thread{[&fulfiller]() { resolve(fulfiller); }}.join();
+  }
+}
