@@ -33,7 +33,7 @@ namespace _ {
 template <typename T, typename EventLoop, typename ThreadingModel>
 class PromiseNode;
 
-template <typename PrevResult, typename OnFulfill, typename OnReject,
+template <typename PrevResult, typename OnFulfilled, typename OnRejected,
           typename OnProgress, typename... Attachments>
 struct ContinuationTypeTrait;
 
@@ -48,8 +48,8 @@ class MultiThreaded;
 class NoEventLoop;
 class MultiThreadEventLoop;
 
-using default_on_fulfill_t = std::nullptr_t;
-using default_on_reject_t = std::nullptr_t;
+using default_on_fulfilled_t = std::nullptr_t;
+using default_on_rejected_t = std::nullptr_t;
 using default_on_progress_t = std::nullptr_t;
 
 template <typename T, typename EventLoop = NoEventLoop,
@@ -79,31 +79,31 @@ class Promise {
 
   T wait();
 
-  template <typename OnFulfill, typename OnReject, typename OnProgress,
+  template <typename OnFulfilled, typename OnRejected, typename OnProgress,
             typename... Attachments>
   std::enable_if_t<
-      _::ContinuationTypeTrait<T, OnFulfill, OnReject, OnProgress,
+      _::ContinuationTypeTrait<T, OnFulfilled, OnRejected, OnProgress,
                                Attachments...>::is_valid_continuation,
       Category<typename _::ContinuationTypeTrait<
-          T, OnFulfill, OnReject, OnProgress, Attachments...>::ResultType>>
-      then(OnFulfill&& on_fulfill, OnReject&& on_reject,
+          T, OnFulfilled, OnRejected, OnProgress, Attachments...>::ResultType>>
+      then(OnFulfilled&& on_fulfilled, OnRejected&& on_rejected,
            OnProgress&& on_progress, Attachments&&... attachments);
 
-  template <typename OnFulfill>
+  template <typename OnFulfilled>
   std::enable_if_t<
-      _::ContinuationTypeTrait<T, OnFulfill, std::nullptr_t,
+      _::ContinuationTypeTrait<T, OnFulfilled, std::nullptr_t,
                                std::nullptr_t>::is_valid_continuation,
-      Category<typename _::ContinuationTypeTrait<T, OnFulfill, std::nullptr_t,
+      Category<typename _::ContinuationTypeTrait<T, OnFulfilled, std::nullptr_t,
                                                  std::nullptr_t>::ResultType>>
-      then(OnFulfill&& on_fulfill);
+      then(OnFulfilled&& on_fulfilled);
 
-  template <typename OnFulfill, typename OnReject>
+  template <typename OnFulfilled, typename OnRejected>
   std::enable_if_t<
-      _::ContinuationTypeTrait<T, OnFulfill, OnReject,
+      _::ContinuationTypeTrait<T, OnFulfilled, OnRejected,
                                std::nullptr_t>::is_valid_continuation,
-      Category<typename _::ContinuationTypeTrait<T, OnFulfill, OnReject,
+      Category<typename _::ContinuationTypeTrait<T, OnFulfilled, OnRejected,
                                                  std::nullptr_t>::ResultType>>
-      then(OnFulfill&& on_fulfill, OnReject&& on_reject);
+      then(OnFulfilled&& on_fulfilled, OnRejected&& on_rejected);
 
  private:
   explicit Promise(std::unique_ptr<NodeType> node);
@@ -742,30 +742,30 @@ struct JoinPromise<Promise<T, E, Th>, Attachment> : public AttachableNodeMaker_<
   using ResultType = T;
 };
 
-template <typename PrevResult, typename OnFulfill, typename OnReject,
+template <typename PrevResult, typename OnFulfilled, typename OnRejected,
           typename Attachment>
 struct ContinuationResult
-    : public JoinPromise<FunctionResultType<OnFulfill, PrevResult, Attachment&>,
+    : public JoinPromise<FunctionResultType<OnFulfilled, PrevResult, Attachment&>,
                          Attachment> {
   static const bool valid_result_type = std::is_same<
       ResultType,
-      FunctionResultType<OnReject, std::exception_ptr, Attachment&>>::value;
+      FunctionResultType<OnRejected, std::exception_ptr, Attachment&>>::value;
 };
 
-template <typename PrevResult, typename OnReject, typename Attachment>
+template <typename PrevResult, typename OnRejected, typename Attachment>
 struct ContinuationResult<
-    PrevResult, std::nullptr_t, OnReject,
-    Attachment> : public JoinPromise<FunctionResultType<OnReject,
+    PrevResult, std::nullptr_t, OnRejected,
+    Attachment> : public JoinPromise<FunctionResultType<OnRejected,
                                                         std::exception_ptr,
                                                         Attachment&>,
                                      Attachment> {
   static const bool valid_result_type = true;
 };
 
-template <typename PrevResult, typename OnFulfill, typename Attachment>
+template <typename PrevResult, typename OnFulfilled, typename Attachment>
 struct ContinuationResult<
-    PrevResult, OnFulfill, std::nullptr_t,
-    Attachment> : public JoinPromise<FunctionResultType<OnFulfill, PrevResult,
+    PrevResult, OnFulfilled, std::nullptr_t,
+    Attachment> : public JoinPromise<FunctionResultType<OnFulfilled, PrevResult,
                                                         Attachment&>,
                                      Attachment> {
   static const bool valid_result_type = true;
@@ -777,29 +777,6 @@ struct ContinuationResult<PrevResult, std::nullptr_t, std::nullptr_t,
                                                            Attachment> {
   static const bool valid_result_type = true;
 };
-
-// template <typename OnFulfill, typename OnReject, typename Attachment>
-// struct ContinuationResult<void, OnFulfill, OnReject, Attachment> {};
-//
-// template <typename OnFulfill, typename Attachment>
-// struct ContinuationResult<void, OnFulfill, std::nullptr_t, Attachment> {};
-//
-// template <typename OnReject, typename Attachment>
-// struct ContinuationResult<
-//    void, std::nullptr_t, OnReject,
-//    Attachment> : public JoinPromise<FunctionResultType<OnReject,
-//                                                        std::exception_ptr,
-//                                                        Attachment>,
-//                                     Attachment> {
-//  static const bool valid_result_type = true;
-//};
-//
-// template <typename Attachment>
-// struct ContinuationResult<void, std::nullptr_t, std::nullptr_t,
-//                          Attachment> : public JoinPromise<void,
-//                                                           Attachment> {
-//  static const bool valid_result_type = true;
-//};
 
 template <typename PrevResult, typename OnProgress, typename Attachment>
 struct IsValidOnProgress {
@@ -826,10 +803,10 @@ struct IsValidOnProgress<void, std::nullptr_t, Attachment> {
   static const bool value = true;
 };
 
-template <typename PrevResult, typename OnFulfill, typename OnReject,
+template <typename PrevResult, typename OnFulfilled, typename OnRejected,
           typename OnProgress, typename... Attachments>
 struct ContinuationTypeTrait
-    : public ContinuationResult<PrevResult, OnFulfill, OnReject,
+    : public ContinuationResult<PrevResult, OnFulfilled, OnRejected,
                                 std::tuple<Attachments...>> {
   static const bool is_valid_continuation =
       valid_result_type &&
@@ -1130,41 +1107,41 @@ T PROMISE::wait() {
 }
 
 PROMISE_TEMPLATE_LIST
-template <typename OnFulfill, typename OnReject, typename OnProgress,
+template <typename OnFulfilled, typename OnRejected, typename OnProgress,
           typename... Attachments>
-auto PROMISE::then(OnFulfill&& on_fulfill, OnReject&& on_reject,
+auto PROMISE::then(OnFulfilled&& on_fulfilled, OnRejected&& on_rejected,
                    OnProgress&& on_progress, Attachments&&... attachments)
     -> std::enable_if_t<
-          _::ContinuationTypeTrait<T, OnFulfill, OnReject, OnProgress,
+          _::ContinuationTypeTrait<T, OnFulfilled, OnRejected, OnProgress,
                                    Attachments...>::is_valid_continuation,
           Category<typename _::ContinuationTypeTrait<
-              T, OnFulfill, OnReject, OnProgress,
+              T, OnFulfilled, OnRejected, OnProgress,
               Attachments...>::ResultType>> {
   using namespace _;
   using ResultType = typename ContinuationTypeTrait<
-      T, OnFulfill, OnReject, OnProgress, Attachments...>::ResultType;
+      T, OnFulfilled, OnRejected, OnProgress, Attachments...>::ResultType;
   using ResultPromise = Category<ResultType>;
 
-  auto default_on_fulfill = [](ObjectifyVoid<T> v) {
+  auto default_on_fulfilled = [](ObjectifyVoid<T> v) {
     return returnMaybeVoid(std::move(v));
   };
-  using OnFulfillType = decltype(forwardMaybeNull<OnFulfill>(
-      std::forward<OnFulfill>(on_fulfill), std::move(default_on_fulfill)));
+  using OnFulfilledType = decltype(forwardMaybeNull<OnFulfilled>(
+      std::forward<OnFulfilled>(on_fulfilled), std::move(default_on_fulfilled)));
 
-  auto default_on_reject = [](std::exception_ptr e) {
+  auto default_on_rejected = [](std::exception_ptr e) {
     std::rethrow_exception(e);
     return returnMaybeVoid(
         std::move(*reinterpret_cast<ObjectifyVoid<ResultType>*>(nullptr)));
   };
-  using OnRejectType = decltype(forwardMaybeNull<OnReject>(
-      std::forward<OnReject>(on_reject), std::move(default_on_reject)));
+  using OnRejectedType = decltype(forwardMaybeNull<OnRejected>(
+      std::forward<OnRejected>(on_rejected), std::move(default_on_rejected)));
 
   auto default_on_progress = [](ObjectifyVoid<T>&&) {};
   using OnProgressType = decltype(forwardMaybeNull<OnProgress>(
       std::forward<OnProgress>(on_progress), std::move(default_on_progress)));
 
   auto old_node = node_.get();
-  auto new_node = ContinuationTypeTrait<T, OnFulfill, OnReject, OnProgress,
+  auto new_node = ContinuationTypeTrait<T, OnFulfilled, OnRejected, OnProgress,
                                         Attachments...>::
       NodeMaker<EventLoop, ThreadingModel>::make(
           old_node->getEventLoop(), std::move(node_),
@@ -1172,18 +1149,18 @@ auto PROMISE::then(OnFulfill&& on_fulfill, OnReject&& on_reject,
   auto new_node_ptr = new_node.get();
 
   old_node->setOnReadyCallback(partiallyApply(
-      [new_node_ptr](OnFulfillType on_fulfill, OnRejectType on_reject,
+      [new_node_ptr](OnFulfilledType on_fulfilled, OnRejectedType on_rejected,
                      NodeType* node) {
         auto& result = node->getResult();
         if (result.isException())
-          transformAndFulfill(new_node_ptr, on_reject, result.getException());
+          transformAndFulfill(new_node_ptr, on_rejected, result.getException());
         else
-          transformAndFulfill(new_node_ptr, on_fulfill, result.getValue());
+          transformAndFulfill(new_node_ptr, on_fulfilled, result.getValue());
       },
-      forwardMaybeNull<OnFulfill>(std::forward<OnFulfill>(on_fulfill),
-                                  std::move(default_on_fulfill)),
-      forwardMaybeNull<OnReject>(std::forward<OnReject>(on_reject),
-                                 std::move(default_on_reject))));
+      forwardMaybeNull<OnFulfilled>(std::forward<OnFulfilled>(on_fulfilled),
+                                  std::move(default_on_fulfilled)),
+      forwardMaybeNull<OnRejected>(std::forward<OnRejected>(on_rejected),
+                                 std::move(default_on_rejected))));
 
   old_node->setOnProgressCallback(
       partiallyApply([new_node_ptr](OnProgressType on_progress, NodeType* node,
@@ -1205,27 +1182,27 @@ auto PROMISE::then(OnFulfill&& on_fulfill, OnReject&& on_reject,
 }
 
 PROMISE_TEMPLATE_LIST
-template <typename OnFulfill>
-auto PROMISE::then(OnFulfill&& on_fulfill)
+template <typename OnFulfilled>
+auto PROMISE::then(OnFulfilled&& on_fulfilled)
     -> std::enable_if_t<
-          _::ContinuationTypeTrait<T, OnFulfill, std::nullptr_t,
+          _::ContinuationTypeTrait<T, OnFulfilled, std::nullptr_t,
                                    std::nullptr_t>::is_valid_continuation,
           Category<typename _::ContinuationTypeTrait<
-              T, OnFulfill, std::nullptr_t, std::nullptr_t>::ResultType>> {
-  return then(std::forward<OnFulfill>(on_fulfill), default_on_reject_t{},
+              T, OnFulfilled, std::nullptr_t, std::nullptr_t>::ResultType>> {
+  return then(std::forward<OnFulfilled>(on_fulfilled), default_on_rejected_t{},
               default_on_progress_t{});
 }
 
 PROMISE_TEMPLATE_LIST
-template <typename OnFulfill, typename OnReject>
-auto PROMISE::then(OnFulfill&& on_fulfill, OnReject&& on_reject)
+template <typename OnFulfilled, typename OnRejected>
+auto PROMISE::then(OnFulfilled&& on_fulfilled, OnRejected&& on_rejected)
     -> std::enable_if_t<
-          _::ContinuationTypeTrait<T, OnFulfill, OnReject,
+          _::ContinuationTypeTrait<T, OnFulfilled, OnRejected,
                                    std::nullptr_t>::is_valid_continuation,
           Category<typename _::ContinuationTypeTrait<
-              T, OnFulfill, OnReject, std::nullptr_t>::ResultType>> {
-  return then(std::forward<OnFulfill>(on_fulfill),
-              std::forward<OnReject>(on_reject), default_on_progress_t{});
+              T, OnFulfilled, OnRejected, std::nullptr_t>::ResultType>> {
+  return then(std::forward<OnFulfilled>(on_fulfilled),
+              std::forward<OnRejected>(on_rejected), default_on_progress_t{});
 }
 
 #undef PROMISE_TEMPLATE_LIST
