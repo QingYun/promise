@@ -35,6 +35,11 @@ void reject(F&& f, V&& v) {
   }
 }
 
+template <typename T>
+Promise<T> rejected() {
+  return makePromise<T>(std::make_exception_ptr(std::runtime_error{ "" }));
+}
+
 // When fulfilled, a promise: must not transition to any other state.
 TEST(PromiseAPlusTest, Test_2_1_2_1) {
   // trying to fulfill then immediately reject
@@ -149,5 +154,67 @@ TEST(PromiseAPlusTest, Test_2_1_3_1) {
 
     reject(fulfiller, std::make_exception_ptr(std::runtime_error{ "" }));
     std::thread{[&fulfiller]() { resolve(fulfiller); }}.join();
+  }
+}
+
+// Both "onFulfilled" and "onRejected" are optional arguments
+
+// If "onFulfilled" is a nullptr, it must be ignored
+TEST(PromiseAPlusTest, Test_2_2_1_1) {
+  ::testing::StaticAssertTypeEq<default_on_fulfilled_t, std::nullptr_t>();
+
+  // applied to a directly-rejected promise
+  {
+    bool on_rejected_called = false;
+    auto promise = rejected<void>().then(
+        nullptr, [&on_rejected_called](std::exception_ptr) {
+          on_rejected_called = true;
+        });
+
+    EXPECT_EQ(true, on_rejected_called);
+  }
+
+  // applied to a promise rejected and then chained off of
+  {
+    bool on_rejected_called = false;
+    auto promise = rejected<void>().then([]() {}).then(
+        nullptr, [&on_rejected_called](std::exception_ptr) {
+          on_rejected_called = true;
+        });
+
+    EXPECT_EQ(true, on_rejected_called);
+  }
+}
+
+// If "onRejected" is a nullptr, it must be ignored
+TEST(PromiseAPlusTest, Test_2_2_1_2) {
+  ::testing::StaticAssertTypeEq<default_on_rejected_t, std::nullptr_t>();
+
+  // applied to a directly-fulfilled promise
+  {
+    bool on_fulfilled_called = false;
+    auto promise = makePromise<MoveOnly>(MoveOnly{42})
+                       .then([&on_fulfilled_called](MoveOnly mo) {
+                               EXPECT_EQ(42, mo.value_);
+                               on_fulfilled_called = true;
+                             },
+                             nullptr);
+
+    EXPECT_EQ(true, on_fulfilled_called);
+  }
+
+  // applied to a promise fulfilled and then chained off of
+  {
+    bool on_fulfilled_called = false;
+    auto promise =
+        makePromise<MoveOnly>(MoveOnly{42})
+            .then(nullptr, [](std::exception_ptr) { return MoveOnly{0}; })
+            .then([&on_fulfilled_called](MoveOnly mo) {
+                    EXPECT_EQ(42, mo.value_);
+                    on_fulfilled_called = true;
+                  },
+                  nullptr);
+
+    EXPECT_EQ(true, on_fulfilled_called);
   }
 }
